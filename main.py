@@ -1,8 +1,6 @@
 import csv
 import io
 import pandas as pd
-from pandas.io.formats.printing import PrettyDict
-
 
 def de_name(dict):
     if dict['ФИО'][-1] =='а':
@@ -39,19 +37,7 @@ def de_train_type(dict):
             dict['Рейс']=i
 
 def de_wagon(dict):
-    wagons_and_seats = {
-        'Сапсан': ['1Р', '1В', '1С', '2С', '2В', '2E'],
-        'Стриж': ['1Е', '1Р', '2С'],
-        'Сидячий': ['1С', '1Р', '1В', '2Р', '2Е'],
-        'Плацкарт': ['3Э'],
-        'Купе': ['2Э'],
-        'Люкс': ['1Б', '1Л'],
-        'Мягкий': ['1А', '1И']
-    }
-    type=dict['Вагон и место'][:2]
-    for i in wagons_and_seats.keys():
-        if type in wagons_and_seats[i]:
-            dict['Вагон и место']=i
+    dict['Вагон и место']='*****'
 
 def de_price(dict):
     price =int(dict['Стоимость'][:-2])
@@ -67,7 +53,7 @@ def de_price(dict):
         dict['Стоимость']= '>=5000'
 
 def de_card(dict):
-    dict['Карта оплаты'] =dict['Карта оплаты'][:4]+ ' **** **** ****'
+    dict['Карта оплаты'] ='**** **** **** ****'
 
 def de_date(dict):
     for i in ('Дата отъезда','Дата приезда'):
@@ -122,23 +108,30 @@ def evaluate_data_utility(original_df: pd.DataFrame, anonymized_df: pd.DataFrame
 
 
 def calculate_k_anonymity_from_dict(data_list, quasi_identifiers):
-    # Преобразовать список словарей в DataFrame
     data = pd.DataFrame(data_list)
 
-    # Сгруппировать данные по квазиидентификаторам
     grouped = data.groupby(quasi_identifiers).size().reset_index(name='count')
 
-    # Вычислить k-анонимность (минимальный размер группы)
     k_anonymity = grouped['count'].min()
 
-    # Отсортировать по возрастанию количества записей в группах
     worst_groups = grouped.sort_values(by='count', ascending=True).head(5)
 
-    # Рассчитать процентное соотношение для топ-5 наименее анонимных групп
     total_records = len(data)
     worst_groups['percentage'] = (worst_groups['count'] / total_records) * 100
 
     return k_anonymity, worst_groups
+
+
+def remove_low_frequency_rows(data_list, quasi_identifiers, threshold):
+    data = pd.DataFrame(data_list)
+
+    grouped = data.groupby(quasi_identifiers).size().reset_index(name='count')
+
+    frequent_groups = grouped[grouped['count'] >= threshold]
+
+    filtered_data = data.merge(frequent_groups[quasi_identifiers], on=quasi_identifiers, how='inner')
+
+    return filtered_data.to_dict(orient='records')
 
 
 
@@ -171,17 +164,36 @@ with io.open('new_train_tickets_dataset.csv', encoding='utf-8') as csvfile:
     if card == 'Y':
         k_identiti.append('Карта оплаты')
 
-    k_anonymity, worst_groups = calculate_k_anonymity_from_dict(new_reader, k_identiti)
+
+
+
+    filtered_data = remove_low_frequency_rows(new_reader, k_identiti, 10)
+    with io.open('new_new_train_tickets_dataset.csv', mode='w', encoding='utf-8', newline='') as newfile:
+        fieldnames = reader.fieldnames
+        writer = csv.DictWriter(newfile, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in filtered_data:
+            writer.writerow(row)
+    k_anonymity, worst_groups = calculate_k_anonymity_from_dict(filtered_data, k_identiti)
     original_data = pd.read_csv("train_tickets_dataset.csv")
-    anonymized_data = pd.read_csv("new_train_tickets_dataset.csv")
+    anonymized_data = pd.read_csv("new_new_train_tickets_dataset.csv")
     utility_report = evaluate_data_utility(original_data, anonymized_data, k_identiti)
 
     print("k-анонимность:", k_anonymity)
     print("Топ 5:\n", worst_groups)
 
+
     print(utility_report)
-    print(type(evaluate_data_utility(original_data, anonymized_data, k_identiti)))
-    print(type(calculate_k_anonymity_from_dict(new_reader, k_identiti)))
+
+
+
+
+
+
+
+
+
+
 
 
 
